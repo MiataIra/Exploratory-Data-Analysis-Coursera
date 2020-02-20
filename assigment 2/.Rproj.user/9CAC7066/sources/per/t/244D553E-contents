@@ -1,0 +1,288 @@
+rm(list=ls()); #slette alle variabler som kan være fra før
+
+library(PxWebApiData); library(openxlsx); library(tidyr); library(dplyr); #pakke som trenges
+library(DBI); library(RPostgreSQL)
+options(encoding="UTF-8")
+
+
+
+setwd("C:/Users/e-iryku/Trøndelag fylkeskommune/Seksjon Plan - Statistikk/R/database i csv") #hvor skal vi lage database
+conn <- dbConnect(PostgreSQL(), host="127.0.0.1",user="postgres", dbname="api",  password="467913irina")
+url_excel<-"C:/Users/e-iryku/Trøndelag fylkeskommune/Seksjon Plan - Statistikk/R/Iryna/script for database i csv/tabellene for DAG.xlsx"
+
+
+list_tabeller<-read.xlsx(url_excel, colNames = FALSE, sheet="uten regioner") #hvor ligger excell-fil 
+
+for (i in 1:nrow(list_tabeller)){
+    
+    Num<-list_tabeller[[1]][i]
+    
+    print(Num)
+    
+    # -------  navn av tabell i database.   blir for eksempel "ssb_04036" --------------------------------------
+    
+    if (nchar(Num)==4) {   
+        Num_navn<-paste("0", as.character(Num), sep="")
+    } else {
+        Num_navn<-as.character(Num)
+    }
+    
+    navn<-paste("ssb_", Num_navn, sep="")
+    
+    # ------- laste ned fra ssb  -----------------------------------------------------------------------
+    
+    My_data<-ApiData(Num, 
+           defaultJSONquery=TRUE,  
+           ContentsCode =list("all", "*"), 
+           Tid=5i)[[1]]
+    
+    # -------  koder for noen variabler -------------------------------------
+    
+    MetaData<-ApiData(Num, returnMetaFrames = TRUE)
+    
+    ikke_kode<-c("Kjonn", "Alder", "ContentsCode", "Tid", "Ganger")
+    
+    navner_col<-NULL
+    navner_col<-rbind(navner_col, names(MetaData))
+    navner_col<-rbind(navner_col, attr(MetaData, "text"))
+    
+    navner_col<-as.data.frame(navner_col, stringsAsFactors = FALSE)
+    
+    
+    med_kode<-select(navner_col, setdiff(names(navner_col), ikke_kode))
+    
+    if (ncol(med_kode)!=0){
+        for (k in 1:ncol(med_kode)){
+            colnames(MetaData[[med_kode[1,k]]])[2]<-med_kode[2,k]
+            
+            
+            My_data<-right_join(My_data, MetaData[[med_kode[1,k]]])
+            
+            My_data[med_kode[2,k]]<-sapply(My_data[med_kode[2,k]], function(x) paste(My_data[,"values"], My_data[,med_kode[2,k]]))
+            My_data<-select(My_data, -values)
+        }
+        
+    }
+    
+    # -----------  uten norsk bokstav p? navnene i database -----------------------------------    
+    
+    
+    
+    names(My_data)<-gsub("å", "aa", names(My_data))
+    names(My_data)<-gsub("ø", "oe", names(My_data))
+    names(My_data)<-gsub("æ", "ae", names(My_data))
+    
+    
+    # ----------- skriving i database eller p? pc-en i csv-format
+    
+    if (!file.exists("tabellene for DAG")) {dir.create("tabellene for DAG")}
+    
+    write.csv(My_data,
+              file=paste("./tabellene for DAG/", navn, ".csv", sep=""), row.names = FALSE)
+    #dbWriteTable(conn, navn, My_data, overwrite=TRUE, row.names = FALSE)
+    
+    Sys.sleep(1) #vent litt for neste tabell
+    
+}
+
+list_tabeller_regioner<-read.xlsx(url_excel, colNames = FALSE, sheet="med regioner")
+
+for (j in 1:nrow(list_tabeller_regioner)){
+    Num<-list_tabeller_regioner[[1]][j]
+    print(Num)
+    
+    # -------  navn av tabell i database.   blir for eksempel "ssb_04036" --------------------------------------
+    
+    if (nchar(Num)==4) {   
+        Num_navn<-paste("0", as.character(Num), sep="")
+    } else {
+        Num_navn<-as.character(Num)
+    }
+    
+    navn<-paste("ssb_", Num_navn, sep="")
+    
+    #---------------- sjekk st?relsen av tabell -----------------------------  
+    
+    MetaData<-ApiData(Num, returnMetaFrames = TRUE)
+    size<-1
+    for (l in 1:length(MetaData)){
+        size<-size*(nrow(MetaData[[l]]))
+    }
+    
+    #---------laste ned tabell -----------------
+    
+    if (size>800000){  #store tabellene
+        if(Num %in% c(12362, 12367)){
+            y<-0
+            t<-c(y*25+(1:25))
+            My_data<-ApiData(Num, 
+                             KOKkommuneregion0000 =t, 
+                             defaultJSONquery=TRUE, 
+                             ContentsCode =list("all", "*"), #tatt av alle statistikkvariabler
+                             Tid=5i)[[1]]
+            
+            while(max(t)<nrow(MetaData[[1]])){
+                y<-y+1
+                t<-c(y*25+(1:25))
+                print(y)
+                del<-ApiData(Num, 
+                             KOKkommuneregion0000 =t, 
+                             defaultJSONquery=TRUE, 
+                             ContentsCode =list("all", "*"), #tatt av alle statistikkvariabler
+                             Tid=5i)[[1]]
+                My_data<-rbind(My_data, del)
+            }
+        } else {
+            y<-0
+            t<-c(y*50+(1:50))
+            My_data<-ApiData(Num, 
+                             Region =t, 
+                             defaultJSONquery=TRUE,  
+                             ContentsCode =list("all", "*"), 
+                             Tid=5i)[[1]]
+            
+            while(max(t)<nrow(MetaData[[1]])){
+                y<-y+1
+                t<-c(y*50+(1:50))
+                print(y)
+                del<-ApiData(Num, 
+                             Region =t, 
+                             defaultJSONquery=TRUE,  
+                             ContentsCode =list("all", "*"), 
+                             Tid=5i)[[1]]
+                My_data<-rbind(My_data, del)
+            }
+        }
+        
+       
+    } else {
+        My_data<-ApiData(Num, 
+                         defaultJSONquery=TRUE,   
+                         ContentsCode =list("all", "*"), 
+                         Tid=5i)[[1]]
+        
+        
+    }
+    
+    
+    # -------  koder for noen variabler -------------------------------------
+    
+    MetaData<-ApiData(Num, returnMetaFrames = TRUE)
+    
+    ikke_kode<-c("Kjonn", "Alder", "ContentsCode", "Tid", "BygnAr", "KOKavtaleform0000", "KOKalder0000")
+    
+    navner_col<-NULL
+    navner_col<-rbind(navner_col, names(MetaData))
+    navner_col<-rbind(navner_col, attr(MetaData, "text"))
+    
+    navner_col<-as.data.frame(navner_col, stringsAsFactors = FALSE)
+    
+    
+    med_kode<-select(navner_col, setdiff(names(navner_col), ikke_kode))
+    
+    if (ncol(med_kode)!=0) {
+        for (k in 1:ncol(med_kode)){
+            colnames(MetaData[[med_kode[1,k]]])[2]<-med_kode[2,k]
+            
+            
+            My_data<-right_join(My_data, MetaData[[med_kode[1,k]]])
+            
+            My_data[med_kode[2,k]]<-sapply(My_data[med_kode[2,k]], function(x) paste(My_data[,"values"], My_data[,med_kode[2,k]], sep="__"))
+            My_data<-select(My_data, -values)
+        }
+        
+    }
+    print("kode ferdig")
+
+    # ---------- for agregering av kommuner som var sammensl?tt ------ --------
+    
+    Data19<-My_data[grep("\\-2019\\)", My_data[, "region"]), ]
+    Data18<-My_data[grep("2018\\)", My_data[, "region"]), ]
+    Data17<-My_data[grep("2017\\)", My_data[, "region"]), ]
+    Data16<-My_data[grep("2016\\)", My_data[, "region"]), ]
+    
+    Data_uten<-My_data[grep("\\d\\)", My_data[, "region"], invert = TRUE), ] 
+    Data_uten<-Data_uten[grep("^30", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^34", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^38", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^42", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^46", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^54", Data_uten[, "region"], invert = TRUE), ]
+    Data_uten<-Data_uten[grep("^22", Data_uten[, "region"], invert = TRUE), ] #Jan Mayen
+    Data_uten<-Data_uten[grep("^88", Data_uten[, "region"], invert = TRUE), ] #Ikke bosatt i Norge	
+    Data_uten<-Data_uten[grep("^26", Data_uten[, "region"], invert = TRUE), ] #Havområder
+    Data_uten<-Data_uten[grep("^25", Data_uten[, "region"], invert = TRUE), ] #Utlandet
+    Data_uten<-Data_uten[grep("^23", Data_uten[, "region"], invert = TRUE), ]  #sokkelen
+    Data_uten<-Data_uten[grep("Uoppgitt", Data_uten[, "region"], invert = TRUE), ]
+    
+    Data<-bind_rows(Data19, Data18, Data17, Data16, Data_uten)
+    
+    Data[, "region"]<-gsub(" \\(\\-\\d\\d\\d\\d\\)", "", Data[, "region"]) #fjerne (-2019)
+    Data[, "region"]<-gsub(" \\(\\d\\d\\d\\d\\-\\d\\d\\d\\d\\)", "", Data[, "region"]) #fjerne alle perioder
+    
+    Data[, "region"]<-gsub("1567", "5061", Data[, "region"]) #Rindal
+    Data[, "region"]<-gsub("^16", "50", Data[, "region"]) #Tr?ndelag
+    Data[, "region"]<-gsub("^17", "50", Data[, "region"]) #Tr?ndelag
+    Data[, "region"]<-gsub("Sør-Trøndelag", "Trøndelag - TrÃ¶Ã¶ndelage", Data[, "region"])
+    Data[, "region"]<-gsub("Nord-Trøndelag", "Trøndelag - TrÃ¶Ã¶ndelage", Data[, "region"])
+    
+    
+    Data[, "region"]<-gsub("Andebu", "Sandefjord", Data[, "region"])
+    Data[, "region"]<-gsub("Stokke", "Sandefjord", Data[, "region"])
+    Data[, "region"]<-gsub("0719", "0710", Data[, "region"])
+    Data[, "region"]<-gsub("0720", "0710", Data[, "region"])
+    Data[, "region"]<-gsub("0706", "0710", Data[, "region"])
+    
+    Data[, "region"]<-gsub("Lardal", "Larvik", Data[, "region"])
+    Data[, "region"]<-gsub("0709", "0712", Data[, "region"])
+    Data[, "region"]<-gsub("0728", "0712", Data[, "region"])
+    
+    Data[, "region"]<-gsub("Hof", "Holmestrand", Data[, "region"])
+    Data[, "region"]<-gsub("0702", "0715", Data[, "region"])
+    Data[, "region"]<-gsub("0714", "0715", Data[, "region"])
+    
+    Data[, "region"]<-gsub("Tjøme", "Færder", Data[, "region"])
+    Data[, "region"]<-gsub("Nøtterøy", "Færder", Data[, "region"])
+    Data[, "region"]<-gsub("0722", "0729", Data[, "region"])
+    Data[, "region"]<-gsub("0723", "0729", Data[, "region"])
+    
+    Data[, "region"]<-gsub("Rissa", "Indre Fosen", Data[, "region"])
+    Data[, "region"]<-gsub("Leksvik", "Indre Fosen", Data[, "region"])
+    Data[, "region"]<-gsub("5024", "5054", Data[, "region"])
+    Data[, "region"]<-gsub("5018", "5054", Data[, "region"])
+    
+    print("hele tabell")
+    
+    Data_med_na<-Data[is.na(Data[, "value"]), ]
+    Data_uten_na<-Data[!is.na(Data[, "value"]), ]
+    
+    Data_uten_na<-Data_uten_na %>% 
+        group_by_at(vars(-value)) %>%
+        summarise(value=sum(value, na.rm=TRUE)) %>%
+        as.data.frame()
+    
+    Data_med_na<-anti_join(Data_med_na, Data_uten_na, by=setdiff(names(Data_med_na), "value"))
+    
+    My_data<-bind_rows(Data_med_na, Data_uten_na) #Ferdig data
+    
+    print("ferdig tabell")
+    
+    names(My_data)<-gsub("å", "aa", names(My_data))
+    names(My_data)<-gsub("ø", "oe", names(My_data))
+    names(My_data)<-gsub("æ", "ae", names(My_data))
+    
+    if (!file.exists("tabellene for DAG")) {dir.create("tabellene for DAG")}
+    
+    write.csv(My_data,
+               file=paste("./tabellene for DAG/", navn, ".csv", sep=""), row.names = FALSE)
+    dbWriteTable(conn, navn, My_data, overwrite=TRUE, row.names = FALSE)
+    
+}
+
+#dbDisconnect(conn)
+
+
+
+
+
+
