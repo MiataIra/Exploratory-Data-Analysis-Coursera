@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1581665526526.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3080721100",
+    "id" : "244D553E",
+    "lastKnownWriteTime" : 1581503249,
+    "last_content_update" : 1581503249,
+    "path" : "C:/Users/iryku/OneDrive - Trøndelag fylkeskommune/R/Dag fra ssb/get tabellene for DAG v5 med koder for aggregering av kommuner.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "261,23",
+        "scrollLine" : "240"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
