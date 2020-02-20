@@ -1,6 +1,13 @@
 rm(list = ls())
 library(hms)
 library(dplyr)
+import(pandas)
+library(reticulate)
+py_install("numpy")
+py_install("pandas")
+
+
+
 Sys.setlocale("LC_ALL", "English") # for English weekday
 Sys.setenv("LANGUAGE"="En")
 
